@@ -385,6 +385,54 @@ function importJSON(file){ const reader = new FileReader(); reader.onload = e=>{
   catch(err){ showToast('JSON読み込みに失敗しました'); }
 }; reader.readAsText(file); }
 
+function setCookie(name,value,days=365){
+const d = new Date(); d.setTime(d.getTime()+(days*24*60*60*1000));
+document.cookie = name + '=' + encodeURIComponent(value) + ';expires=' + d.toUTCString() + ';path=/';
+}
+function getCookie(name){
+const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+if(match) return decodeURIComponent(match[2]);
+return null;
+}
+function deleteCookie(name){
+document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
+}
+
+
+/* ======= Storage & Data Model (Cookie対応) ======= */
+const STORAGE_KEY = 'study_money_v1';
+let store = {
+sessions: [],
+daily: {},
+settings: {rate:0.1, theme:'light', sound:true, anim:true, autoSave:true},
+subjects: ['general','math','english','programming']
+};
+
+
+function loadStore(){
+try{
+const cookieData = getCookie(STORAGE_KEY);
+if(cookieData){ store = JSON.parse(cookieData); }
+}catch(e){ console.error('load error',e); }
+}
+function saveStore(){
+if(store.settings.autoSave) setCookie(STORAGE_KEY, JSON.stringify(store), 365);
+}
+
+
+/* ======= CookieとlocalStorageの同期機能 ======= */
+function syncCookieToLocal(){
+const cookieData = getCookie(STORAGE_KEY);
+if(cookieData) localStorage.setItem(STORAGE_KEY, cookieData);
+}
+function syncLocalToCookie(){
+const data = localStorage.getItem(STORAGE_KEY);
+if(data) setCookie(STORAGE_KEY, data, 365);
+}
+
+loadStore();
+syncCookieToLocal();
+
 /* ======= UI wiring ======= */
 loadStore();
 
