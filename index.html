@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>StudyMoney — 勉強お金タイマー</title>
+<!--
+  StudyMoney — 商品化レベルの単一ファイルアプリ
+  - 勉強1分 = 0.1円 (設定可能)
+  - タイマー (開始 / 一時停止 / 停止 / リセット)
+  - 目標設定（分 / 円）と進捗バー
+  - 日/週/月のグラフ、習慣カレンダー
+  - レベル/バッジシステム、アニメーション
+  - データ永続化 (localStorage)、CSVエクスポート / JSONインポート・エクスポート
+  - ダークモード、音、通知、テーマ切替
+  - 科目タグ/セッションメモ
+  - オフラインで動作、サーバ不要
+-->
+
+<style>
+:root{
+  --bg:#f5f7fb; --card:#ffffff; --text:#1f2937; --muted:#6b7280; --accent:#2563eb; --good:#16a34a; --warn:#f59e0b; --danger:#ef4444;
+}
+[data-theme='dark']{ --bg:#0b1220; --card:#071129; --text:#e6eef8; --muted:#9aa9bf; --accent:#60a5fa; --good:#34d399; --warn:#fbbf24; --danger:#fb7185; }
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;padding:18px;background:linear-gradient(180deg,var(--bg),#ffffff00);color:var(--text);display:flex;justify-content:center}
+.app{width:100%;max-width:1100px}
+.header{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:14px}
+.title{display:flex;gap:12px;align-items:center}
+.logo{width:56px;height:56px;border-radius:12px;background:linear-gradient(135deg,var(--accent),#7c3aed);display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:18px;box-shadow:0 6px 18px rgba(37,99,235,0.18)}
+.h1{font-size:20px;font-weight:700}
+.controls{display:flex;gap:8px;align-items:center}
+.btn{padding:8px 12px;border-radius:10px;border:none;cursor:pointer;background:var(--card);box-shadow:0 4px 10px rgba(2,6,23,0.06);font-weight:600}
+.small{padding:6px 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:1fr 360px;gap:16px}
+@media(max-width:980px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border-radius:14px;padding:14px;box-shadow:0 8px 30px rgba(2,6,23,0.06)}
+.timer{font-size:40px;font-weight:700;letter-spacing:1px}
+.money{font-size:20px;color:var(--good);font-weight:700}
+.row{display:flex;gap:10px;align-items:center}
+.row.space{justify-content:space-between}
+.bigbtn{font-size:18px;padding:12px 18px;border-radius:12px}
+.start{background:linear-gradient(90deg,var(--good),#10b981);color:white}
+.pause{background:linear-gradient(90deg,var(--warn),#f97316);color:white}
+.stop{background:linear-gradient(90deg,var(--danger),#ef4444);color:white}
+.reset{background:#e2e8f0}
+.input{padding:8px;border-radius:10px;border:1px solid #e6eef8;background:transparent}
+.progress-wrap{margin-top:10px}
+.progress{height:14px;background:#e6eef8;border-radius:10px;overflow:hidden}
+.progress > i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#7c3aed);width:0%;transition:width 400ms cubic-bezier(.2,.9,.3,1)}
+.meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+.badge{padding:6px 10px;border-radius:999px;background:linear-gradient(90deg,#fff9f0,#fdf2f8);font-weight:700;color:var(--muted);box-shadow:0 4px 12px rgba(2,6,23,0.04)}
+.controls-vertical{display:flex;flex-direction:column;gap:8px}
+.canvas{width:100%;height:220px}
+.kv{font-size:13px;color:var(--muted)}
+.settings{display:flex;flex-direction:column;gap:8px}
+.switch{display:inline-flex;align-items:center;gap:8px}
+.theme-toggle{width:44px;height:26px;background:#e6eef8;border-radius:20px;position:relative;padding:3px}
+.theme-toggle > i{position:absolute;width:20px;height:20px;border-radius:50%;background:white;left:3px;top:3px;transition:all 220ms}
+[data-theme='dark'] .theme-toggle{background:#0f1724}
+[data-theme='dark'] .theme-toggle > i{left:21px}
+.small-note{font-size:12px;color:var(--muted)}
+.calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.day{height:36px;border-radius:6px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--muted)}
+.day.filled{background:linear-gradient(90deg,var(--accent),#7c3aed);color:white}
+.footer{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.card .title-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.subjects{display:flex;gap:8px;flex-wrap:wrap}
+.subject{padding:6px 8px;border-radius:8px;background:#eef2ff;font-weight:600;color:#3730a3}
+.toast{position:fixed;right:18px;bottom:18px;background:var(--card);padding:12px 16px;border-radius:12px;box-shadow:0 10px 30px rgba(2,6,23,0.15)}
+.anim-pop{animation:pop 700ms cubic-bezier(.2,.9,.3,1)}
+@keyframes pop{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.05)}100%{transform:scale(1)}}
+</style>
+</head>
+<body>
+<div class="app" id="app" data-theme="light">
+  <div class="header">
+    <div class="title">
+      <div class="logo">SM</div>
+      <div>
+        <div class="h1">StudyMoney</div>
+        <div class="kv">勉強を『見える化』して、お金で報酬化する習慣アプリ</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="small-note">1分 = <strong id="rateLabel">0.1</strong> 円</div>
+      <button class="btn small" id="themeBtn" title="ダークモード切替">
+        <div class="theme-toggle" id="themeToggle"><i></i></div>
+      </button>
+      <button class="btn small" id="notifBtn" title="通知を許可">🔔</button>
+      <button class="btn small" id="exportBtn" title="データをエクスポート">⤓ 保存</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- 左: メイン -->
+    <div>
+      <div class="card">
+        <div class="title-row"><strong>タイマー</strong><span class="kv">状態: <span id="stateLabel">停止中</span></span></div>
+        <div class="timer" id="time">00:00:00</div>
+        <div class="row space">
+          <div class="money">累計: ¥<span id="money">0.0</span></div>
+          <div class="kv">今のセッション: <span id="sessionMinutes">0</span> 分</div>
+        </div>
+
+        <div class="progress-wrap">
+          <div class="kv">今日の進捗</div>
+          <div class="progress"><i id="progressBar"></i></div>
+        </div>
+
+        <div class="row" style="margin-top:12px;">
+          <input class="input" id="goalMinutes" type="number" min="1" placeholder="目標（分）" style="width:110px">
+          <input class="input" id="goalYen" type="number" min="1" placeholder="目標（金額 円）" style="width:140px">
+          <select id="subjectSelect" class="input" style="width:140px">
+            <option value="general">科目: 全体</option>
+            <option value="math">数学</option>
+            <option value="english">英語</option>
+            <option value="programming">プログラミング</option>
+          </select>
+        </div>
+
+        <div class="row" style="margin-top:12px;">
+          <button class="btn bigbtn start" id="startBtn">開始</button>
+          <button class="btn bigbtn pause" id="pauseBtn">一時停止</button>
+          <button class="btn bigbtn stop" id="stopBtn">停止</button>
+          <button class="btn bigbtn reset" id="resetBtn">リセット</button>
+        </div>
+
+        <div class="meta">
+          <div class="badge">レベル: <span id="levelLabel">1</span></div>
+          <div class="badge">バッジ: <span id="badgeLabel">なし</span></div>
+          <div class="badge">連続日数: <span id="streak">0</span></div>
+        </div>
+
+        <div class="footer">
+          <div class="small-note">メモ（任意）</div>
+          <input id="sessionNote" class="input" placeholder="このセッションのメモ（例: 英単語）" style="flex:1">
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <div class="title-row"><strong>週間 / 月間グラフ</strong>
+          <div class="kv">過去30日を自動で保存</div>
+        </div>
+        <canvas id="chart" class="canvas"></canvas>
+        <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+          <button class="btn small" id="view7">7日</button>
+          <button class="btn small" id="view30">30日</button>
+          <button class="btn small" id="exportCSV">CSVエクスポート</button>
+          <input id="importFile" type="file" accept="application/json" style="display:none">
+          <button class="btn small" id="importBtn">JSON読み込み</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <div class="title-row"><strong>習慣カレンダー（過去7日）</strong>
+          <div class="kv">勉強した日は色が付きます</div>
+        </div>
+        <div class="calendar" id="calendar"></div>
+      </div>
+
+    </div>
+
+    <!-- 右: サイドバー -->
+    <div>
+      <div class="card">
+        <div class="title-row"><strong>統計と設定</strong><div class="kv">詳しい設定</div></div>
+        <div class="settings">
+          <label class="kv">換算レート（1分あたり円） <input id="rateInput" class="input" type="number" step="0.01" value="0.1" style="width:110px"></label>
+          <label class="kv">サウンド <input id="soundToggle" type="checkbox" checked></label>
+          <label class="kv">アニメーション <input id="animToggle" type="checkbox" checked></label>
+          <label class="kv">自動保存 <input id="autoSaveToggle" type="checkbox" checked></label>
+        </div>
+
+        <div style="margin-top:12px">
+          <div class="kv">科目管理</div>
+          <div class="subjects" id="subjects"></div>
+          <div style="margin-top:8px;display:flex;gap:8px">
+            <input id="newSubject" class="input" placeholder="新しい科目名">
+            <button class="btn small" id="addSubject">追加</button>
+          </div>
+        </div>
+
+        <div style="margin-top:12px">
+          <div class="kv">インポート / エクスポート</div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn small" id="exportJSON">JSONエクスポート</button>
+            <button class="btn small" id="clearData">データ削除</button>
+          </div>
+        </div>
+
+        <div style="margin-top:12px">
+          <div class="kv">使い方ヒント</div>
+          <ol class="kv">
+            <li>目標を決める（分 / 円）</li>
+            <li>25分を1ブロックにして集中</li>
+            <li>終わったらメモを書いて習慣化</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <div class="title-row"><strong>称号・報酬</strong><div class="kv">やる気を刺激する要素</div></div>
+        <div id="rewards" style="display:flex;flex-direction:column;gap:10px">
+          <div class="kv">レベルは累計金額で上がります。レベルに応じた称号を獲得。</div>
+          <div class="badge">次のレベルまで: <span id="nextLevelRemain">¥0</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast" style="display:none"></div>
+
+<!-- External libs -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<script>
+/* ======= Storage & Data Model ======= */
+const STORAGE_KEY = 'study_money_v1';
+let store = {
+  sessions: [], // {start, end, minutes, yen, subject, note, date}
+  daily: {}, // 'YYYY-MM-DD' : minutes
+  settings: {rate:0.1, theme:'light', sound:true, anim:true, autoSave:true},
+  subjects: ['general','math','english','programming']
+};
+
+function loadStore(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){ store = JSON.parse(raw); }
+  }catch(e){ console.error('load error',e); }
+}
+function saveStore(){
+  if(store.settings.autoSave) localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+}
+
+/* ======= Utils ======= */
+function fmtTime(sec){
+  const h = Math.floor(sec/3600); const m = Math.floor((sec%3600)/60); const s = sec%60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+function todayKey(d=new Date()){ return d.toISOString().slice(0,10); }
+function showToast(msg,timeout=2200){ const t = document.getElementById('toast'); t.textContent=msg; t.style.display='block'; t.classList.add('anim-pop'); setTimeout(()=>{ t.style.display='none'; t.classList.remove('anim-pop'); }, timeout); }
+
+/* ======= Timer ======= */
+let timerState = {running:false, startAt:0, pausedAt:0, accumulated:0, subject:'general', note:''};
+let tickInterval = null;
+
+const timeEl = document.getElementById('time');
+const moneyEl = document.getElementById('money');
+const stateLabel = document.getElementById('stateLabel');
+const sessionMinutesEl = document.getElementById('sessionMinutes');
+const progressBar = document.getElementById('progressBar');
+const levelLabel = document.getElementById('levelLabel');
+const badgeLabel = document.getElementById('badgeLabel');
+const streakLabel = document.getElementById('streak');
+
+function updateUI(){
+  const elapsed = Math.floor(timerState.accumulated + (timerState.running ? (Date.now()-timerState.startAt)/1000 : 0));
+  timeEl.textContent = fmtTime(elapsed);
+  const yen = ((elapsed/60) * store.settings.rate);
+  moneyEl.textContent = yen.toFixed(1);
+  sessionMinutesEl.textContent = Math.floor(elapsed/60);
+  stateLabel.textContent = timerState.running ? '実行中' : (timerState.accumulated>0 ? '停止' : '停止中');
+
+  // goal progress
+  const goalMin = parseInt(document.getElementById('goalMinutes').value) || 0;
+  const goalYen = parseFloat(document.getElementById('goalYen').value) || 0;
+  let percent = 0;
+  if(goalMin>0){ percent = Math.min((elapsed/60)/goalMin*100,100); }
+  else if(goalYen>0){ percent = Math.min((yen)/goalYen*100,100); }
+  progressBar.style.width = percent + '%';
+}
+
+function tick(){ updateUI(); }
+
+function startTimer(){
+  if(!timerState.running){
+    timerState.running = true; timerState.startAt = Date.now();
+    tickInterval = setInterval(tick,1000);
+    if(store.settings.sound) beep(880,60);
+    showToast('タイマー開始');
+  }
+}
+function pauseTimer(){
+  if(timerState.running){
+    timerState.accumulated += (Date.now() - timerState.startAt)/1000;
+    timerState.running = false; clearInterval(tickInterval); tickInterval = null;
+    if(store.settings.sound) beep(440,60);
+    showToast('一時停止');
+  } else {
+    // resume
+    startTimer();
+  }
+}
+function stopTimer(){
+  if(timerState.accumulated>0 || timerState.running){
+    if(timerState.running){ timerState.accumulated += (Date.now()-timerState.startAt)/1000; timerState.running=false; clearInterval(tickInterval); tickInterval=null; }
+
+    const minutes = Math.floor(timerState.accumulated/60);
+    const yen = (timerState.accumulated/60) * store.settings.rate;
+    const session = {start:Date.now() - timerState.accumulated*1000, end:Date.now(), minutes:minutes, yen:parseFloat(yen.toFixed(1)), subject:timerState.subject, note:timerState.note, date: todayKey() };
+    store.sessions.push(session);
+    store.daily[session.date] = (store.daily[session.date] || 0) + minutes;
+    timerState.accumulated = 0; timerState.subject='general'; timerState.note='';
+    saveStore();
+    rebuildAfterSession();
+    if(store.settings.sound) beep(660,180);
+    showToast('セッション記録');
+  } else {
+    showToast('記録するセッションがありません');
+  }
+}
+function resetTimer(){
+  timerState = {running:false, startAt:0, pausedAt:0, accumulated:0, subject:'general', note:''};
+  clearInterval(tickInterval); tickInterval=null; updateUI();
+  showToast('リセットしました');
+}
+
+/* ======= Session end updates ======= */
+function rebuildAfterSession(){
+  updateUI(); renderChart(); renderCalendar(); updateStats();
+}
+
+/* ======= Chart ======= */
+const ctx = document.getElementById('chart').getContext('2d');
+let chartMode = '30';
+let chartObj = new Chart(ctx,{
+  type:'bar',
+  data:{labels:[],datasets:[{label:'分',data:[],backgroundColor:[]}]},
+  options:{responsive:true,scales:{y:{beginAtZero:true}},plugins:{legend:{display:false}}}
+});
+
+function getRangeData(days=30){
+  const arr=[]; const labels=[];
+  for(let i=days-1;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); const key=d.toISOString().slice(0,10); labels.push(key.slice(5)); arr.push(store.daily[key] || 0); }
+  return {labels,arr};
+}
+function renderChart(){
+  const days = (chartMode==='7')?7:30;
+  const data = getRangeData(days);
+  chartObj.data.labels = data.labels; chartObj.data.datasets[0].data = data.arr; chartObj.update();
+}
+
+/* ======= Calendar (past 7 days) ======= */
+function renderCalendar(){
+  const cal = document.getElementById('calendar'); cal.innerHTML='';
+  for(let i=6;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); const key = d.toISOString().slice(0,10); const el = document.createElement('div'); el.className='day'; el.textContent = d.getDate(); if((store.daily[key]||0) > 0) el.classList.add('filled'); cal.appendChild(el); }
+}
+
+/* ======= Stats / Level / Badges ======= */
+function calcTotalYen(){ let s=0; store.sessions.forEach(x=>s+=x.yen); return s; }
+function updateStats(){
+  const total = calcTotalYen();
+  // simple leveling: every 100円 -> level up
+  const lvl = Math.floor(total / 100) + 1; levelLabel.textContent = lvl;
+  const badges = [];
+  if(total>=500) badges.push('Bronze');
+  if(total>=1500) badges.push('Silver');
+  if(total>=3000) badges.push('Gold');
+  badgeLabel.textContent = badges.join(',') || 'なし';
+  const next = (lvl*100) - total; document.getElementById('nextLevelRemain').textContent = '¥' + Math.max(0,next).toFixed(1);
+
+  // streak (連続日数)
+  let streak=0; for(let i=0;i<30;i++){ const d=new Date(); d.setDate(d.getDate()-i); const key=d.toISOString().slice(0,10); if((store.daily[key]||0)>0) streak++; else break; }
+  streakLabel.textContent = streak;
+}
+
+/* ======= Export / Import ======= */
+function exportJSON(){ const blob = new Blob([JSON.stringify(store,null,2)],{type:'application/json'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='studymoney_backup.json'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); showToast('JSONをエクスポートしました'); }
+function exportCSV(){
+  const headers = ['date','minutes','yen','subject','note'];
+  const rows = [headers.join(',')];
+  store.sessions.forEach(s=> rows.push([s.date,s.minutes,s.yen,`"${(s.subject||'')}"`, `"${(s.note||'')}"`].join(',')));
+  const blob = new Blob([rows.join('\n')],{type:'text/csv'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='studymoney_sessions.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); showToast('CSVをエクスポートしました');
+}
+
+function importJSON(file){ const reader = new FileReader(); reader.onload = e=>{
+  try{ const data = JSON.parse(e.target.result); store = data; saveStore(); rebuildAfterSession(); showToast('JSONをインポートしました'); }
+  catch(err){ showToast('JSON読み込みに失敗しました'); }
+}; reader.readAsText(file); }
+
+/* ======= UI wiring ======= */
+loadStore();
+
+// init UI values
+document.getElementById('rateInput').value = store.settings.rate;
+document.getElementById('rateLabel').textContent = store.settings.rate;
+if(store.settings.theme==='dark') document.getElementById('app').setAttribute('data-theme','dark');
+
+renderChart(); renderCalendar(); updateStats(); updateUI();
+
+// buttons
+document.getElementById('startBtn').addEventListener('click', ()=>{
+  timerState.subject = document.getElementById('subjectSelect').value;
+  timerState.note = document.getElementById('sessionNote').value;
+  startTimer();
+});
+document.getElementById('pauseBtn').addEventListener('click', ()=>{ pauseTimer(); });
+document.getElementById('stopBtn').addEventListener('click', ()=>{ stopTimer(); });
+document.getElementById('resetBtn').addEventListener('click', ()=>{ resetTimer(); });
+
+// chart view toggle
+document.getElementById('view7').addEventListener('click', ()=>{ chartMode='7'; renderChart(); });
+document.getElementById('view30').addEventListener('click', ()=>{ chartMode='30'; renderChart(); });
+
+// rate change
+document.getElementById('rateInput').addEventListener('change', (e)=>{
+  store.settings.rate = parseFloat(e.target.value) || 0.1; document.getElementById('rateLabel').textContent = store.settings.rate; saveStore(); renderChart(); updateUI(); showToast('換算レートを保存しました');
+});
+
+// toggles
+document.getElementById('soundToggle').addEventListener('change',(e)=>{ store.settings.sound = e.target.checked; saveStore(); });
+document.getElementById('animToggle').addEventListener('change',(e)=>{ store.settings.anim = e.target.checked; saveStore(); });
+document.getElementById('autoSaveToggle').addEventListener('change',(e)=>{ store.settings.autoSave = e.target.checked; saveStore(); });
+
+// theme toggle
+const appEl = document.getElementById('app');
+document.getElementById('themeBtn').addEventListener('click', ()=>{
+  const cur = appEl.getAttribute('data-theme'); const next = cur==='light'?'dark':'light'; appEl.setAttribute('data-theme',next); store.settings.theme = next; saveStore(); showToast(next==='dark'?'ダークモード':'ライトモード');
+});
+
+// notif
+document.getElementById('notifBtn').addEventListener('click', async ()=>{
+  if(!('Notification' in window)){ showToast('このブラウザは通知に対応していません'); return; }
+  const perm = await Notification.requestPermission(); if(perm==='granted'){ new Notification('StudyMoney', {body:'通知が有効になりました'}); showToast('通知許可されました'); } else showToast('通知が拒否されました');
+});
+
+// export/import
+document.getElementById('exportBtn').addEventListener('click', exportJSON);
+document.getElementById('exportJSON').addEventListener('click', exportJSON);
+document.getElementById('exportCSV').addEventListener('click', exportCSV);
+document.getElementById('importBtn').addEventListener('click', ()=> document.getElementById('importFile').click());
+document.getElementById('importFile').addEventListener('change',(e)=>{ if(e.target.files.length) importJSON(e.target.files[0]); });
+
+// clear data
+document.getElementById('clearData').addEventListener('click', ()=>{ if(confirm('本当に保存データを削除しますか？')){ localStorage.removeItem(STORAGE_KEY); store = {sessions:[],daily:{},settings:{rate:0.1,theme:'light',sound:true,anim:true,autoSave:true},subjects:['general','math','english','programming']}; saveStore(); rebuildAfterSession(); showToast('データを削除しました'); } });
+
+// add subject
+document.getElementById('addSubject').addEventListener('click', ()=>{ const name = document.getElementById('newSubject').value.trim(); if(!name) return; store.subjects.push(name); saveStore(); renderSubjects(); showToast('科目を追加しました'); document.getElementById('newSubject').value=''; });
+function renderSubjects(){ const el = document.getElementById('subjects'); el.innerHTML=''; store.subjects.forEach(s=>{ const d=document.createElement('div'); d.className='subject'; d.textContent=s; el.appendChild(d); const opt = document.createElement('option'); opt.value=s; opt.textContent=s; document.getElementById('subjectSelect').appendChild(opt); }); }
+renderSubjects();
+
+// import saved sessions on load
+window.addEventListener('beforeunload', ()=>{ if(store.settings.autoSave) saveStore(); });
+
+/* ======= Helpers: sound & beep ======= */
+function beep(freq=440,dur=120){ try{ const ctx = new (window.AudioContext||window.webkitAudioContext)(); const o = ctx.createOscillator(); const g = ctx.createGain(); o.type='sine'; o.frequency.value = freq; g.gain.value = 0.02; o.connect(g); g.connect(ctx.destination); o.start(); setTimeout(()=>{ o.stop(); ctx.close(); }, dur); }catch(e){} }
+
+/* ======= Init UI bindings for session note change & subject select ======= */
+document.getElementById('sessionNote').addEventListener('input',(e)=>{ timerState.note = e.target.value; });
+document.getElementById('subjectSelect').addEventListener('change',(e)=>{ timerState.subject = e.target.value; });
+
+document.getElementById('stopBtn').addEventListener('click', ()=>{ document.getElementById('sessionNote').value=''; });
+
+/* ======= Initial render ======= */
+renderChart(); renderCalendar(); updateStats(); updateUI();
+
+</script>
+</body>
+</html>
