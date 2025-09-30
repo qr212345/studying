@@ -229,16 +229,6 @@ let store = {
   subjects: ['general','math','english','programming']
 };
 
-function loadStore(){
-  try{
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if(raw){ store = JSON.parse(raw); }
-  }catch(e){ console.error('load error',e); }
-}
-function saveStore(){
-  if(store.settings.autoSave) localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
-}
-
 /* ======= Utils ======= */
 function fmtTime(sec){
   const h = Math.floor(sec/3600); const m = Math.floor((sec%3600)/60); const s = sec%60;
@@ -400,14 +390,6 @@ document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
 
 
 /* ======= Storage & Data Model (Cookie対応) ======= */
-let store = {
-sessions: [],
-daily: {},
-settings: {rate:0.1, theme:'light', sound:true, anim:true, autoSave:true},
-subjects: ['general','math','english','programming']
-};
-
-
 function loadStore(){
 try{
 const cookieData = getCookie(STORAGE_KEY);
